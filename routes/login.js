@@ -1,9 +1,10 @@
-
 const express = require('express');
 const router = express.Router();
-const pool = require('../db');
+const { query } = require('../db'); // tu función query con pg Pool y promesas
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+
+const SECRET_KEY = 'mi_clave_secreta'; // cambia en producción
 
 // Cerrar sesión
 router.get('/logout', (req, res) => {
@@ -12,15 +13,13 @@ router.get('/logout', (req, res) => {
   });
 });
 
-const SECRET_KEY = 'mi_clave_secreta'; // cámbiala en producción
-
 // Mostrar formulario de login
 router.get('/', (req, res) => {
-  res.render('login', { error: "" });
+  res.render('login', { error: '' });
 });
 
 // Procesar login (POST /login)
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { usuario, password } = req.body;
 
   if (!usuario || !password) {
@@ -30,14 +29,9 @@ router.post('/', (req, res) => {
     return res.render('login', { error: 'Faltan datos' });
   }
 
-  pool.query('SELECT * FROM usuarios WHERE usuario = ?', [usuario], async (err, results) => {
-    if (err) {
-      console.error(err);
-      if (req.headers.accept?.includes('application/json')) {
-        return res.status(500).json({ error: 'Error en la base de datos' });
-      }
-      return res.render('login', { error: 'Error en la base de datos' });
-    }
+  try {
+    const result = await query('SELECT * FROM usuarios WHERE usuario = $1', [usuario]);
+    const results = result.rows;
 
     if (results.length === 0) {
       if (req.headers.accept?.includes('application/json')) {
@@ -65,13 +59,21 @@ router.post('/', (req, res) => {
 
     // Login exitoso
     req.session.user = { id: user.id, usuario: user.usuario };
+
     if (req.headers.accept?.includes('application/json')) {
       const token = jwt.sign({ id: user.id, usuario: user.usuario }, SECRET_KEY, { expiresIn: '1h' });
       return res.json({ message: 'Login exitoso', token });
     } else {
       return res.redirect('/home');
     }
-  });
+
+  } catch (err) {
+    console.error(err);
+    if (req.headers.accept?.includes('application/json')) {
+      return res.status(500).json({ error: 'Error en la base de datos' });
+    }
+    return res.render('login', { error: 'Error en la base de datos' });
+  }
 });
 
 module.exports = router;
