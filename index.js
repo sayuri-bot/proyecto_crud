@@ -6,19 +6,38 @@ const bodyParser = require('body-parser');
 const methodOverride = require('method-override');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
-const expressLayouts = require('express-ejs-layouts');
 const isAuthenticated = require('./middleware/auth');
 const { query } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Lista de orígenes permitidos (IPs o dominios)
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://tu-dominio.com',
+  'http://123.123.123.123',
+];
+
+// Configuración CORS con filtro de allowed IPs/domains
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('No permitido por CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 // Configuración de EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Middlewares
-app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
@@ -29,7 +48,6 @@ app.use(session({
   secret: 'mi_clave_secreta',
   resave: false,
   saveUninitialized: false,
-  // store: usar un store persistente en producción como Redis o connect-pg-simple
 }));
 
 // Static files
