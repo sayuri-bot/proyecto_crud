@@ -12,32 +12,27 @@ const { query } = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Lista de orígenes permitidos (IPs o dominios)
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://proyecto-crud-w7db.onrender.com/',
-  'http://123.123.123.123',
-];
+// Middleware para permitir solo IP 45.232.149.130
+function checkAllowedIP(req, res, next) {
+  const allowedIP = '45.232.149.130';
+  const clientIP = req.ip.replace('::ffff:', '');
 
-// Configuración CORS con filtro de allowed IPs/domains
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+  if (clientIP === allowedIP) {
+    next();
+  } else {
+    res.status(403).send('Acceso denegado: IP no autorizada');
+  }
+}
+
+// Aplicar filtro de IP antes que cualquier ruta
+app.use(checkAllowedIP);
 
 // Configuración de EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Middlewares
+app.use(cors()); // Puedes personalizar o dejar así
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
