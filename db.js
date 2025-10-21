@@ -1,17 +1,36 @@
+// db.js
+require('dotenv').config();
 const { Pool } = require('pg');
 
+// Configurar conexión con PostgreSQL
 const pool = new Pool({
-  host: 'dpg-d3rtad1r0fns73e2p60g-a.oregon-postgres.render.com', // Host de Render
-  user: 'tienda_fyc5_user',   // Usuario de la base
-  password: 'NbwYwWeBVe0pEHxZYx3aIfiGdZ5FLDPR', // Contraseña
-  database: 'tienda_fyc5',    // Nombre de la base
-  port: 5432,
-  ssl: {
-    rejectUnauthorized: false // Esto es común para Render que usa SSL pero sin certificado verificado
-  },
-  max: 10,        // Límite máximo de conexiones en el pool
-  idleTimeoutMillis: 30000,  // Tiempo antes de cerrar conexiones inactivas
-  connectionTimeoutMillis: 2000, // Tiempo para intentar conexión
+  connectionString: process.env.DATABASE_URL,
+  ssl:
+    process.env.NODE_ENV === 'production'
+      ? { rejectUnauthorized: false } // Render u otro hosting seguro
+      : false 
 });
 
-module.exports = pool;
+// Función genérica para consultas
+const query = async (text, params) => {
+  try {
+    const result = await pool.query(text, params);
+    return result;
+  } catch (err) {
+    console.error("❌ Error en la consulta SQL:", err.message);
+    throw err;
+  }
+};
+
+// Probar conexión al iniciar
+(async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('✅ Conexión exitosa a PostgreSQL:', res.rows[0].now);
+  } catch (err) {
+    console.error('❌ Error de conexión:', err);
+  }
+})();
+
+module.exports = { pool, query };
+
