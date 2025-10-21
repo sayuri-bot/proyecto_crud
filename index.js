@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 // Lista de orígenes permitidos (IPs o dominios)
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://tu-dominio.com',
+  'https://proyecto-crud-w7db.onrender.com/',
   'http://123.123.123.123',
 ];
 
