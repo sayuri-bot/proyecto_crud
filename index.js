@@ -7,8 +7,6 @@ const methodOverride = require('method-override');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const expressLayouts = require('express-ejs-layouts');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./swagger');
 const isAuthenticated = require('./middleware/auth');
 const { query } = require('./db');
 
@@ -59,9 +57,6 @@ app.use('/home', homeRoutes);
 app.use('/categorias', categoriasRoutes);
 app.use('/productos', productosRoutes);
 app.use('/imagenes', imagenesRoutes);
-
-// Swagger (si lo necesitas)
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Ruta raíz
 app.get('/', (req, res) => {
