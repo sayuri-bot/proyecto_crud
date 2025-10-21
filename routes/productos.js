@@ -1,121 +1,136 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db'); // tu pool de PostgreSQL
+const { query } = require('../db'); // Importa la función query
 
-// Helper para detectar si la petición espera JSON
-const isJson = (req) => req.is('application/json') || req.headers.accept?.includes('application/json');
+// Middleware para proteger rutas (solo usuarios autenticados)
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) {
+    return next();
+  }
+  res.status(403).render('error', { mensaje: 'Acceso denegado. Inicia sesión.' });
+}
 
-// 📄 LISTAR PRODUCTOS + FILTRO POR CATEGORÍA
+// Listar productos
 router.get('/', async (req, res) => {
   try {
-    let query = `
-      SELECT p.id, p.nombre, p.precio, c.nombre AS categoria
-      FROM productos p
-      LEFT JOIN categorias c ON p.categoria_id = c.id
-    `;
-    const params = [];
-    let categoriaId = null;
+    const sql = `
+      SELECT p.*, 
+        (SELECT url FROM imagenes_productos WHERE producto_id = p.id LIMIT 1) as imagen_url 
+      FROM productos p`;
+    const results = await query(sql);
+    res.render('productos', { productos: results.rows, session: req.session });
+  } catch (err) {
+    console.error('Error al obtener productos:', err.message);
+    res.render('error', { mensaje: 'Error al obtener productos' });
+  }
+});
 
-    if (req.query.categoria) {
-      query += ' WHERE p.categoria_id = $1';
-      params.push(req.query.categoria);
-      categoriaId = Number(req.query.categoria);
+// Mostrar formulario para crear producto (protegido)
+router.get('/nuevo', requireAuth, (req, res) => {
+  const categoria_id = req.query.categoria_id || '';
+  res.render('producto_form', { producto: { categoria_id }, accion: 'Crear', session: req.session });
+});
+
+// Crear producto (protegido)
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    let { nombre, precio, categoria_id } = req.body;
+    if (!categoria_id || categoria_id === '') categoria_id = null;
+
+    let sql, params;
+    if (categoria_id) {
+      sql = 'INSERT INTO productos (nombre, precio, categoria_id) VALUES ($1, $2, $3)';
+      params = [nombre, precio, categoria_id];
+    } else {
+      sql = 'INSERT INTO productos (nombre, precio, categoria_id) VALUES ($1, $2, NULL)';
+      params = [nombre, precio];
     }
 
-    query += ' ORDER BY p.id ASC';
+    await query(sql, params);
 
-    const { rows: productos } = await db.query(query, params);
-    const { rows: categorias } = await db.query('SELECT * FROM categorias ORDER BY nombre ASC');
+    if (categoria_id) {
+      res.redirect(`/categorias/${categoria_id}/productos`);
+    } else {
+      res.redirect('/productos');
+    }
+  } catch (err) {
+    console.error('Error al crear producto:', err.message);
+    res.render('error', { mensaje: 'Error al crear producto: ' + err.message });
+  }
+});
 
-    res.render('productos/indexp', {
-      productos,
-      categorias,
-      categoriaId,
-      mensaje: req.query.mensaje || null,
-      error: req.query.error || null,
-      isAuthenticated: req.user ? true : false
+// Ver detalle de producto
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const productoResult = await query(
+      `SELECT p.*, c.nombre as categoria_nombre 
+       FROM productos p 
+       LEFT JOIN categorias c ON p.categoria_id = c.id 
+       WHERE p.id = $1`,
+      [id]
+    );
+
+    if (productoResult.rows.length === 0) {
+      return res.render('error', { mensaje: 'Producto no encontrado' });
+    }
+
+    const producto = productoResult.rows[0];
+
+    const imagenesResult = await query(
+      'SELECT * FROM imagenes_productos WHERE producto_id = $1',
+      [id]
+    );
+
+    res.render('producto_detalle', {
+      producto,
+      categoria: producto.categoria_nombre ? { nombre: producto.categoria_nombre } : null,
+      imagenes: imagenesResult.rows,
+      session: req.session
     });
   } catch (err) {
-    console.error('❌ Error al listar productos:', err.message);
-    res.redirect('/productos?error=Error cargando productos');
+    console.error('Error al obtener detalle de producto:', err.message);
+    res.render('error', { mensaje: 'Error al obtener detalle de producto' });
   }
 });
 
-// 📄 FORMULARIO NUEVO PRODUCTO
-router.get('/nuevop', async (req, res) => {
+// Mostrar formulario para editar producto (protegido)
+router.get('/editar/:id', requireAuth, async (req, res) => {
   try {
-    const { rows: categorias } = await db.query('SELECT * FROM categorias ORDER BY nombre ASC');
-    res.render('productos/nuevop', { categorias, mensaje: null, error: null, isAuthenticated: req.user ? true : false });
-  } catch (err) {
-    console.error('❌ Error al cargar formulario de nuevo producto:', err.message);
-    res.redirect('/productos?error=Error al cargar formulario');
-  }
-});
-
-// ✅ CREAR PRODUCTO
-router.post('/', async (req, res) => {
-  try {
-    const { nombre, precio, categoria_id } = req.body;
-    if (!nombre || !precio || !categoria_id) {
-      return res.redirect(`/productos/nuevop?error=${encodeURIComponent('Todos los campos son obligatorios')}`);
+    const { id } = req.params;
+    const results = await query('SELECT * FROM productos WHERE id = $1', [id]);
+    if (results.rows.length === 0) {
+      return res.render('error', { mensaje: 'Producto no encontrado' });
     }
-
-    const { rowCount } = await db.query('SELECT id FROM categorias WHERE id = $1', [categoria_id]);
-    if (rowCount === 0) return res.redirect(`/productos/nuevop?error=${encodeURIComponent('Categoría no válida')}`);
-
-    await db.query('INSERT INTO productos (nombre, precio, categoria_id) VALUES ($1, $2, $3)', [nombre.trim(), precio, categoria_id]);
-
-    res.redirect(`/productos?mensaje=${encodeURIComponent('Producto creado correctamente')}`);
+    res.render('producto_form', { producto: results.rows[0], accion: 'Editar', session: req.session });
   } catch (err) {
-    console.error('❌ Error al crear producto:', err.message);
-    res.redirect('/productos/nuevop?error=Error al crear producto');
+    console.error('Error al obtener producto para editar:', err.message);
+    res.render('error', { mensaje: 'Producto no encontrado' });
   }
 });
 
-// 📄 FORMULARIO EDITAR PRODUCTO
-router.get('/editarp/:id', async (req, res) => {
+// Actualizar producto (protegido)
+router.post('/editar/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { rows: productos } = await db.query('SELECT * FROM productos WHERE id = $1', [id]);
-    if (productos.length === 0) return res.redirect(`/productos?error=${encodeURIComponent('Producto no encontrado')}`);
-
-    const { rows: categorias } = await db.query('SELECT * FROM categorias ORDER BY nombre ASC');
-
-    res.render('productos/editarp', { producto: productos[0], categorias, mensaje: null, error: null, isAuthenticated: req.user ? true : false });
+    const { nombre, precio } = req.body;
+    await query('UPDATE productos SET nombre = $1, precio = $2 WHERE id = $3', [nombre, precio, id]);
+    res.redirect('/productos');
   } catch (err) {
-    console.error('❌ Error al cargar formulario de edición:', err.message);
-    res.redirect('/productos?error=Error al cargar formulario');
+    console.error('Error al actualizar producto:', err.message);
+    res.render('error', { mensaje: 'Error al actualizar producto' });
   }
 });
 
-// ✅ ACTUALIZAR PRODUCTO (PUT con método override o POST desde form)
-router.post('/editarp/:id', async (req, res) => {
+// Eliminar producto (protegido)
+router.post('/eliminar/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, precio, categoria_id } = req.body;
-
-    const { rowCount } = await db.query('UPDATE productos SET nombre = $1, precio = $2, categoria_id = $3 WHERE id = $4', [nombre.trim(), precio, categoria_id, id]);
-
-    if (rowCount === 0) return res.redirect(`/productos?error=${encodeURIComponent('Producto no encontrado')}`);
-
-    res.redirect(`/productos?mensaje=${encodeURIComponent('Producto actualizado correctamente')}`);
+    await query('DELETE FROM productos WHERE id = $1', [id]);
+    res.redirect('/productos');
   } catch (err) {
-    console.error('❌ Error al actualizar producto:', err.message);
-    res.redirect(`/productos/editarp/${req.params.id}?error=Error al actualizar producto`);
-  }
-});
-
-// ✅ ELIMINAR PRODUCTO (desde indexp)
-router.post('/:id/delete', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rowCount } = await db.query('DELETE FROM productos WHERE id = $1', [id]);
-    if (rowCount === 0) return res.redirect(`/productos?error=${encodeURIComponent('Producto no encontrado')}`);
-
-    res.redirect(`/productos?mensaje=${encodeURIComponent('Producto eliminado correctamente')}`);
-  } catch (err) {
-    console.error('❌ Error al eliminar producto:', err.message);
-    res.redirect(`/productos?error=Error al eliminar producto`);
+    console.error('Error al eliminar producto:', err.message);
+    res.render('error', { mensaje: 'Error al eliminar producto' });
   }
 });
 
