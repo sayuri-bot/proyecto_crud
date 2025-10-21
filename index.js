@@ -1,8 +1,15 @@
+require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
+const path = require('path');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 const methodOverride = require('method-override');
-const cors = require('cors');
 const session = require('express-session');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const expressLayouts = require('express-ejs-layouts');
+const isAuthenticated = require('./middleware/auth');
+const { query } = require('./db');
 
 const app = express(); 
 const PORT = 3000;
