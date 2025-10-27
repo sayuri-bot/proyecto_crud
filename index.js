@@ -12,40 +12,46 @@ const { query } = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware para permitir solo IP 45.232.149.130
+// 🔹 Permite obtener la IP real del cliente detrás de proxy (Render usa proxy)
+app.set('trust proxy', true);
+
+// 🔒 Middleware: solo permitir acceso desde tu IP pública
 function checkAllowedIP(req, res, next) {
-  const allowedIP = '45.232.149.130';
-  const clientIP = req.ip.replace('::ffff:', '');
+  const allowedIP = '38.250.153.1'; // <-- tu IP pública fija
+  const clientIP = req.ip.replace('::ffff:', ''); // limpia formato IPv6
+
+  console.log(`🌐 Intento de acceso desde IP: ${clientIP}`);
 
   if (clientIP === allowedIP) {
-    next();
+    next(); // IP autorizada → continuar
   } else {
-    res.status(403).send('Acceso denegado: IP no autorizada');
+    console.log(`🚫 Acceso bloqueado para IP: ${clientIP}`);
+    res.status(403).send('🚫 Acceso denegado: IP no autorizada');
   }
 }
 
-// Aplicar filtro de IP antes que cualquier ruta
+// 🔹 Aplicar el filtro de IP antes de cualquier ruta
 app.use(checkAllowedIP);
 
 // Configuración de EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Middlewares
-app.use(cors()); // Puedes personalizar o dejar así
+// Middlewares base
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
 app.use(cookieParser());
 
-// Sesiones (advertencia: MemoryStore no es recomendado en producción)
+// Sesiones
 app.use(session({
   secret: 'mi_clave_secreta',
   resave: false,
   saveUninitialized: false,
 }));
 
-// Static files
+// Archivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
