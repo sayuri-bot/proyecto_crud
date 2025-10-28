@@ -6,31 +6,35 @@ const bodyParser = require('body-parser');
 const methodOverride = require('method-override');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
-const isAuthenticated = require('./middleware/auth');
 const { query } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔹 Permite obtener la IP real del cliente detrás de proxy (Render usa proxy)
+// ✅ Render está detrás de un proxy → necesario para obtener IP real del cliente
 app.set('trust proxy', true);
 
 // 🔒 Middleware: solo permitir acceso desde tu IP pública
 function checkAllowedIP(req, res, next) {
   const allowedIP = '45.232.149.146'; // <-- tu IP pública fija
-  const clientIP = req.ip.replace('::ffff:', ''); // limpia formato IPv6
+  const clientIP = req.ip?.replace('::ffff:', '') || 'desconocida'; // limpia IPv6
 
   console.log(`🌐 Intento de acceso desde IP: ${clientIP}`);
 
+  // Si la IP coincide, continuar
   if (clientIP === allowedIP) {
-    next(); // IP autorizada → continuar
-  } else {
-    console.log(`🚫 Acceso bloqueado para IP: ${clientIP}`);
-    res.status(403).send('🚫 Acceso denegado: IP no autorizada');
+    return next();
   }
+
+  // Si la IP es distinta → bloquear acceso
+  console.log(`🚫 Acceso bloqueado para IP no autorizada: ${clientIP}`);
+  return res.status(403).send(`
+    <h1>🚫 Acceso denegado</h1>
+    <p>Tu IP (<b>${clientIP}</b>) no está autorizada para acceder a este servidor.</p>
+  `);
 }
 
-// 🔹 Aplicar el filtro de IP antes de cualquier ruta
+// 🔹 Aplicar filtro global de IP antes de cualquier otra ruta
 app.use(checkAllowedIP);
 
 // Configuración de EJS
@@ -55,13 +59,13 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
-// Sesión disponible en vistas
+// Hacer sesión accesible en vistas EJS
 app.use((req, res, next) => {
   res.locals.session = req.session;
   next();
 });
 
-// Rutas
+// Importar rutas
 const categoriasRoutes = require('./routes/categorias');
 const productosRoutes = require('./routes/productos');
 const imagenesRoutes = require('./routes/imagenes');
@@ -69,6 +73,7 @@ const loginRoutes = require('./routes/login');
 const registrarRoutes = require('./routes/registrar');
 const homeRoutes = require('./routes/home');
 
+// Usar rutas
 app.use('/login', loginRoutes);
 app.use('/registrar', registrarRoutes);
 app.use('/home', homeRoutes);
@@ -77,9 +82,7 @@ app.use('/productos', productosRoutes);
 app.use('/imagenes', imagenesRoutes);
 
 // Ruta raíz
-app.get('/', (req, res) => {
-  res.redirect('/productos');
-});
+app.get('/', (req, res) => res.redirect('/home'));
 
 // Error 404
 app.use((req, res) => {
