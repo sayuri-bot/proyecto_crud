@@ -14,16 +14,28 @@ const PORT = process.env.PORT || 3000;
 // ✅ Render está detrás de un proxy → necesario para obtener IP real del cliente
 app.set('trust proxy', true);
 
-// 🔐 Lista blanca de IPs permitidas
-const allowedIPs = ['45.232.149.146']; // <-- tu IP pública (puedes agregar más)
+// 🔒 Lista de IPs permitidas (Render y tu IP local si deseas probar)
+const allowedIPs = [
+  '45.232.149.130',
+  '45.232.149.146'
+];
 
-// 🧩 Middleware para verificar IP del visitante
+// 🧠 Obtener la IP real del cliente incluso detrás de proxies
+function getClientIP(req) {
+  return (req.headers['x-forwarded-for'] || req.ip)
+    .split(',')[0]
+    .replace('::ffff:', '')
+    .trim();
+}
+
+// 🔐 Middleware: solo permitir acceso desde las IPs permitidas
 function checkAllowedIP(req, res, next) {
-  const clientIP = req.ip?.replace('::ffff:', '') || 'desconocida';
+  const clientIP = getClientIP(req);
+
   console.log(`🌐 Intento de acceso desde IP: ${clientIP}`);
 
   if (allowedIPs.includes(clientIP)) {
-    return next(); // IP autorizada
+    return next(); // ✅ IP autorizada → continuar
   }
 
   console.log(`🚫 Acceso bloqueado para IP no autorizada: ${clientIP}`);
@@ -33,54 +45,49 @@ function checkAllowedIP(req, res, next) {
   `);
 }
 
-// 🔹 Aplicar filtro global de IP antes de cualquier otra ruta
+// 🔹 Aplicar filtro de IP antes de cualquier ruta
 app.use(checkAllowedIP);
 
-// 🔧 Configurar CORS para las IPs permitidas
-const corsOptionsDelegate = function (req, callback) {
-  const clientIP = req.ip?.replace('::ffff:', '');
-  let corsOptions;
+// 🔹 CORS restringido a tus IPs
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permitir si el dominio o IP está en la lista
+    if (!origin) return callback(null, true); // permitir peticiones locales
+    const isAllowed = allowedIPs.some(ip => origin.includes(ip));
+    if (isAllowed) return callback(null, true);
+    callback(new Error('CORS bloqueado: origen no autorizado'));
+  },
+  credentials: true
+}));
 
-  if (allowedIPs.includes(clientIP)) {
-    corsOptions = { origin: true }; // Permite solicitudes desde esa IP
-  } else {
-    corsOptions = { origin: false }; // Bloquea el resto
-  }
-
-  callback(null, corsOptions);
-};
-
-// ✅ Aplicar CORS con validación de IP
-app.use(cors(corsOptionsDelegate));
-
-// Configuración de EJS
+// ⚙️ Configuración de EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Middlewares base
+// 🧩 Middlewares base
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
 app.use(cookieParser());
 
-// Sesiones
+// 🔑 Sesiones
 app.use(session({
   secret: 'mi_clave_secreta',
   resave: false,
   saveUninitialized: false,
 }));
 
-// Archivos estáticos
+// 📂 Archivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
-// Hacer sesión accesible en vistas EJS
+// 🔁 Hacer sesión accesible en vistas EJS
 app.use((req, res, next) => {
   res.locals.session = req.session;
   next();
 });
 
-// Importar rutas
+// 🚀 Importar rutas
 const categoriasRoutes = require('./routes/categorias');
 const productosRoutes = require('./routes/productos');
 const imagenesRoutes = require('./routes/imagenes');
@@ -88,7 +95,7 @@ const loginRoutes = require('./routes/login');
 const registrarRoutes = require('./routes/registrar');
 const homeRoutes = require('./routes/home');
 
-// Usar rutas
+// 📦 Usar rutas
 app.use('/login', loginRoutes);
 app.use('/registrar', registrarRoutes);
 app.use('/home', homeRoutes);
@@ -96,15 +103,15 @@ app.use('/categorias', categoriasRoutes);
 app.use('/productos', productosRoutes);
 app.use('/imagenes', imagenesRoutes);
 
-// Ruta raíz
+// 🌐 Ruta raíz
 app.get('/', (req, res) => res.redirect('/home'));
 
-// Error 404
+// ❌ Error 404
 app.use((req, res) => {
   res.status(404).render('error', { mensaje: 'Página no encontrada' });
 });
 
-// Iniciar servidor
+// 🟢 Iniciar servidor
 app.listen(PORT, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
 });
