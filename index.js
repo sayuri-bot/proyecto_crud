@@ -14,19 +14,18 @@ const PORT = process.env.PORT || 3000;
 // ✅ Render está detrás de un proxy → necesario para obtener IP real del cliente
 app.set('trust proxy', true);
 
-// 🔒 Middleware: solo permitir acceso desde tu IP pública
-function checkAllowedIP(req, res, next) {
-  const allowedIP = ''; // <-- tu IP pública fija
-  const clientIP = req.ip?.replace('::ffff:', '') || 'desconocida'; // limpia IPv6
+// 🔐 Lista blanca de IPs permitidas
+const allowedIPs = ['45.232.149.146']; // <-- tu IP pública (puedes agregar más)
 
+// 🧩 Middleware para verificar IP del visitante
+function checkAllowedIP(req, res, next) {
+  const clientIP = req.ip?.replace('::ffff:', '') || 'desconocida';
   console.log(`🌐 Intento de acceso desde IP: ${clientIP}`);
 
-  // Si la IP coincide, continuar
-  if (clientIP === allowedIP) {
-    return next();
+  if (allowedIPs.includes(clientIP)) {
+    return next(); // IP autorizada
   }
 
-  // Si la IP es distinta → bloquear acceso
   console.log(`🚫 Acceso bloqueado para IP no autorizada: ${clientIP}`);
   return res.status(403).send(`
     <h1>🚫 Acceso denegado</h1>
@@ -37,12 +36,28 @@ function checkAllowedIP(req, res, next) {
 // 🔹 Aplicar filtro global de IP antes de cualquier otra ruta
 app.use(checkAllowedIP);
 
+// 🔧 Configurar CORS para las IPs permitidas
+const corsOptionsDelegate = function (req, callback) {
+  const clientIP = req.ip?.replace('::ffff:', '');
+  let corsOptions;
+
+  if (allowedIPs.includes(clientIP)) {
+    corsOptions = { origin: true }; // Permite solicitudes desde esa IP
+  } else {
+    corsOptions = { origin: false }; // Bloquea el resto
+  }
+
+  callback(null, corsOptions);
+};
+
+// ✅ Aplicar CORS con validación de IP
+app.use(cors(corsOptionsDelegate));
+
 // Configuración de EJS
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // Middlewares base
-app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'));
