@@ -16,7 +16,7 @@ app.set('trust proxy', true);
 
 // 🔒 Middleware: solo permitir acceso desde tu IP pública
 function checkAllowedIP(req, res, next) {
-  const allowedIP = '45.232.149.130'; // <-- tu IP pública fija
+  const allowedIP = ''; // <-- tu IP pública fija
   const clientIP = req.ip?.replace('::ffff:', '') || 'desconocida'; // limpia IPv6
 
   console.log(`🌐 Intento de acceso desde IP: ${clientIP}`);
